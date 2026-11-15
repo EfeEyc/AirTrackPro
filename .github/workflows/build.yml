@@ -1,0 +1,82 @@
+name: Build AirTrack Pro (iOS IPA + PC Bridge)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios-ipa:
+    name: Build Unsigned iOS IPA (SideStore)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios/AirTrackPro
+        run: xcodegen generate
+
+      - name: Archive unsigned iOS app
+        working-directory: ios/AirTrackPro
+        run: |
+          xcodebuild archive \
+            -project AirTrackPro.xcodeproj \
+            -scheme AirTrackPro \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/AirTrackPro.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Package .xcarchive as unsigned .ipa
+        run: |
+          APP_PATH="$RUNNER_TEMP/AirTrackPro.xcarchive/Products/Applications/AirTrackPro.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: AirTrackPro.app not found at $APP_PATH"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/ipa_stage/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa_stage/Payload/"
+          rm -rf "$RUNNER_TEMP/ipa_stage/Payload/AirTrackPro.app/_CodeSignature"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cd "$RUNNER_TEMP/ipa_stage"
+          zip -qry "$GITHUB_WORKSPACE/dist/AirTrackPro-unsigned.ipa" Payload
+          ls -lh "$GITHUB_WORKSPACE/dist/AirTrackPro-unsigned.ipa"
+
+      - name: Upload AirTrackPro-unsigned.ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirTrackPro-iOS-IPA
+          path: dist/AirTrackPro-unsigned.ipa
+
+  build-pc-bridge:
+    name: Build Windows PC Bridge
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish PC Bridge (win-x64)
+        run: |
+          dotnet publish pc/AirTrackBridge.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/pc
+          copy pc\start.bat dist\pc\start.bat
+
+      - name: Upload PC Bridge artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AirTrackBridge-Windows-x64
+          path: dist/pc/

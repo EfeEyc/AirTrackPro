@@ -1,0 +1,11 @@
+dist/
+build/
+*.xcarchive
+*.ipa
+*.xcodeproj/
+pc/bin/
+pc/obj/
+pc/AirTrackBridge.exe
+pc/airtrack_settings.xml
+*.user
+.DS_Store
