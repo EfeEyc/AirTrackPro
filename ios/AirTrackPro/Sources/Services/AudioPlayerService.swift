@@ -42,17 +42,20 @@ private final class StereoFloatRingBuffer {
         let maxAllowed = min(capacity, max(targetLatencyFrames * 2 + 1800, 4800))
 
         data.withUnsafeBytes { raw in
+            guard let bytes = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
             let scale: Float = 1.0 / 32768.0
             let strideBytes = channels * 2
             for f in 0..<frameCount {
                 let b0 = offset + f * strideBytes
                 guard b0 + 1 < raw.count else { break }
-                let u0 = UInt16(raw[b0]) | (UInt16(raw[b0 + 1]) << 8)
-                let s0 = Int16(bitPattern: u0)
+                let lo0 = UInt16(bytes[b0])
+                let hi0 = UInt16(bytes[b0 + 1]) << 8
+                let s0 = Int16(bitPattern: lo0 | hi0)
                 let s1: Int16
                 if channels >= 2 && b0 + 3 < raw.count {
-                    let u1 = UInt16(raw[b0 + 2]) | (UInt16(raw[b0 + 3]) << 8)
-                    s1 = Int16(bitPattern: u1)
+                    let lo1 = UInt16(bytes[b0 + 2])
+                    let hi1 = UInt16(bytes[b0 + 3]) << 8
+                    s1 = Int16(bitPattern: lo1 | hi1)
                 } else {
                     s1 = s0
                 }
@@ -193,22 +196,24 @@ final class AudioPlayerService: ObservableObject {
 
     func ingestAudioPacket(_ data: Data) {
         guard data.count > 16 else { return }
-        let magicOk = data.withUnsafeBytes { raw -> Bool in
-            guard let b = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return false }
-            return b[0] == UInt8(ascii: "A") && b[1] == UInt8(ascii: "T") &&
-                   b[2] == UInt8(ascii: "P") && b[3] == UInt8(ascii: "A")
-        }
-        guard magicOk else { return }
+        guard let header = data.withUnsafeBytes({ raw -> (UInt32, UInt16, UInt16)? in
+            guard raw.count > 16,
+                  let b = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return nil }
+            guard b[0] == UInt8(ascii: "A"), b[1] == UInt8(ascii: "T"),
+                  b[2] == UInt8(ascii: "P"), b[3] == UInt8(ascii: "A") else { return nil }
+            let r0 = UInt32(b[8])
+            let r1 = UInt32(b[9]) << 8
+            let r2 = UInt32(b[10]) << 16
+            let r3 = UInt32(b[11]) << 24
+            let rate = r0 | r1 | r2 | r3
+            let ch = UInt16(b[12]) | (UInt16(b[13]) << 8)
+            let bits = UInt16(b[14]) | (UInt16(b[15]) << 8)
+            return (rate, ch, bits)
+        }) else { return }
 
-        let pktRate = data.withUnsafeBytes { raw -> UInt32 in
-            UInt32(raw[8]) | (UInt32(raw[9]) << 8) | (UInt32(raw[10]) << 16) | (UInt32(raw[11]) << 24)
-        }
-        let channels = data.withUnsafeBytes { raw -> UInt16 in
-            UInt16(raw[12]) | (UInt16(raw[13]) << 8)
-        }
-        let bits = data.withUnsafeBytes { raw -> UInt16 in
-            UInt16(raw[14]) | (UInt16(raw[15]) << 8)
-        }
+        let pktRate = header.0
+        let channels = header.1
+        let bits = header.2
 
         guard bits == 16, channels >= 1 else { return }
         let rateInt = Int(pktRate)
