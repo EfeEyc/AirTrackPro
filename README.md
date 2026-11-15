@@ -1,6 +1,6 @@
 # AirTrack Pro
 
-Ultra-low-latency **OpenTrack head tracking** + optional **Windows desktop audio streaming** powered by your AirPods' built-in motion sensors and an iPhone/iPhone Duo companion app.
+Ultra-low-latency **OpenTrack head tracking** + optional **Windows desktop audio streaming** powered by your AirPods' built-in motion sensors and an iPhone companion app.
 
 ## Features
 
