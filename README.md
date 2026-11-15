@@ -1,42 +1,62 @@
 # AirTrack Pro
 
-Use **AirPods Pro (1st Gen / 2nd Gen / AirPods 3 / AirPods Max)** connected to your iPhone for ultra-smooth **OpenTrack** head tracking on Windows, controlled through a live **PC Web Interface**, with optional **real-time Windows Desktop Audio streaming** back to your AirPods Pro.
+Ultra-low-latency **OpenTrack head tracking** + optional **Windows desktop audio streaming** powered by your AirPods' built-in motion sensors and an iPhone/iPhone Duo companion app.
 
-## Architecture
+## Features
 
-1. **Native iOS App (`ios/AirTrackPro`)**:
-   - Uses Apple's official `CMHeadphoneMotionManager` framework for native AirPods Pro sensor fusion (quaternion + gyro rotation rate + acceleration + sensor location).
-   - Streams compact 128-byte binary `ATPT` packets over local Wi-Fi UDP (with WebSocket fallback).
-   - Includes a **LAN Auto-Discover** scanner, **QR Code pairing**, a tactile **Recenter Head** button, and an `AVAudioSourceNode` low-latency ring-buffered player so you can hear PC desktop audio through your AirPods while head tracking stays active (including in the background).
-   - Built automatically in GitHub Actions as an **unsigned `.ipa`** ready to sign & install with **SideStore** (no paid Apple Developer account or Mac required).
-
-2. **PC Companion Server & Web Interface (`pc/`)**:
-   - Pure C# Windows server with zero third-party dependencies (`Http + RFC 6455 WebSocket + UDP + COM WASAPI Loopback`).
-   - Serves a live **PC Web Dashboard** (`http://127.0.0.1:7878`) with:
-     - Real-time **3D Head Orientation Preview** & telemetry
-     - **QR Code** pairing & adapter IP selector
-     - **120 Hz / 240 Hz** OpenTrack UDP output (`48-byte` little-endian `X, Y, Z, Yaw, Pitch, Roll` to `127.0.0.1:4242`)
-     - **One-Euro adaptive filter**, short-horizon gyro lead prediction (turns 25 Hz AirPods IMU updates into silky 120 Hz output), soft deadzone, response curves, 6DoF neck/shoulder pivot model, yaw drift guard, and global **F12 Recenter** hotkey
-     - **WASAPI Desktop Audio Loopback** streaming (`48 kHz` stereo PCM over UDP to the iPhone)
+- **Broad AirPods & Beats Support:** Works with any headphone supported by Apple's `CMHeadphoneMotionManager` (AirPods Pro 1st / 2nd / 3rd Gen, AirPods 3rd & 4th Gen, AirPods Max Lightning & USB-C, Beats Fit Pro / Studio Pro — including single-earbud wear).
+- **Zero-Lag Tracking Pipeline:**
+  - Streams compact 128-byte binary `ATPT` frames over LAN **UDP** with `.interactiveVoice` Wi-Fi QoS priority (`WebSocket` fallback included).
+  - Pure C# Windows bridge running with 1 ms timer resolution (`120 Hz` / `240 Hz` output) feeding 48-byte `X, Y, Z, Yaw, Pitch, Roll` UDP packets directly into **OpenTrack** (`127.0.0.1:4242`).
+  - Switchable Web UI presets (**Raw / Zero-Lag**, **Fast 1-Euro (Default)**, **Extra Smooth**), gyro lookahead prediction, 6DoF neck-pivot model, soft yaw drift guard, and global **F12 Recenter**.
+- **Desktop Audio Loopback (Optional):** Captures Windows audio via **WASAPI Loopback** (`48 kHz` stereo PCM) and streams it over UDP back to your AirPods Pro so you hear PC game/flight-sim audio while head tracking stays active (including in background).
+- **Native iPhone, iPad & iPhone Duo UI:** Built with Xcode 27 / iOS 27.2 SDK (`iOS 15.0+` deployment target) with adaptive 1-column / 2-column foldable layout and horizon-tracking QR scanner.
+- **Zero Apple Developer Paid Account Needed:** Unsigned (ad-hoc wrapped) `.ipa` built in GitHub Actions for one-tap **SideStore** installation.
 
 ---
 
-## Setup Guide
+## Quick Start
 
-### 1. Build & Install the iOS App via SideStore
-1. Open the **Actions** tab in your GitHub repository and open the latest **Build AirTrack Pro** workflow run.
-2. Download the **`AirTrackPro-iOS-IPA`** artifact and unzip `AirTrackPro-unsigned.ipa` on your iPhone (Files app).
-3. Open **SideStore**, tap **`+`**, select `AirTrackPro-unsigned.ipa`, and install it.
-4. On first launch, allow **Motion & Fitness**, **Local Network**, and (if using QR pairing) **Camera** permissions.
+### 1. Download from Releases
+Grab both files from the [**Latest Release**](https://github.com/EfeEyc/AirTrackPro/releases/latest):
+- **`AirTrackPro-unsigned.ipa`** — install on your iPhone with **SideStore**
+- **`AirTrackBridge-win-x64.zip`** — extract and run on Windows (`AirTrackBridge.exe` / `start.bat`)
 
-### 2. Run the PC Companion & Open Web Dashboard
-- **Local run (zero SDK required)**: Double-click [`pc/start.bat`](pc/start.bat) (or run `pc\AirTrackBridge.exe`).
-- Your default browser will open `http://127.0.0.1:7878` automatically.
-- *Note:* When Windows Firewall asks, allow **Private Networks** so the iPhone can reach ports `7878` (Web/WS) and `7879` (UDP tracking/audio).
+*(You can also download per-commit builds from the repository **Actions** tab.)*
 
-### 3. Configure OpenTrack
-1. Open **OpenTrack** on your PC.
-2. Set **Input** to **`UDP over network`**.
-3. Click the Input settings hammer icon and make sure **Port** is **`4242`** (matches AirTrack default).
-4. Set your desired **Output** (e.g., `freetrack 2.0 Enhanced` for TrackIR-compatible games) and click **Start**.
-5. Put your AirPods Pro in your ears, pair the iPhone app via **Auto-Discover PC** or **Scan QR**, and tap **RECENTER HEAD** (or press **F12** on PC).
+### 2. Install the iOS App (SideStore)
+1. Download `AirTrackPro-unsigned.ipa` onto your iPhone (Files app).
+2. Open **SideStore**, tap **`+`**, select `AirTrackPro-unsigned.ipa`, and install it.
+3. On first launch, allow **Motion & Fitness**, **Local Network**, and **Camera** permissions.
+
+### 3. Run the PC Bridge
+1. Extract `AirTrackBridge-win-x64.zip` (or double-click `pc/start.bat` from the repo) and run `AirTrackBridge.exe`.
+2. Your browser opens **`http://127.0.0.1:7878`** with the live 3D head preview, filter presets, and QR pairing code.
+3. If Windows Firewall prompts, allow access on **Private** networks so the iPhone can reach:
+   - **TCP `7878`** (Web Dashboard & WebSocket fallback)
+   - **UDP `7879`** (low-latency head tracking & desktop audio stream)
+   - **UDP `7880`** (LAN auto-discovery)
+
+### 4. Pair iPhone & Setup OpenTrack
+1. Open **OpenTrack** on your PC:
+   - **Input:** `UDP over network` (Port **`4242`**)
+   - **Output:** `freetrack 2.0 Enhanced` (for TrackIR-compatible games)
+   - **Filter:** Set to **`None`** (or minimal Accela smoothing) to avoid double-filtering on top of AirTrack's bridge, then click **Start**.
+2. Put your AirPods in your ears.
+3. In **AirTrack Pro** on iPhone, tap **Scan QR** (or **Auto-Discover PC**).
+   - Verify the connection badge reads **`UDP + WS`** for lowest latency.
+4. Look straight at your monitor and tap **RECENTER HEAD** (on iPhone, in the Web UI, or press **F12** on PC).
+
+---
+
+## Repository Structure & Local Development
+
+- `pc/` — Self-contained pure-C# Windows bridge (`Http + WebSocket + UDP + COM WASAPI Loopback`, zero NuGet dependencies).
+  - Run `powershell -ExecutionPolicy Bypass -File pc\build_local.ps1` to compile `pc\AirTrackBridge.exe` locally with the built-in .NET Framework compiler, or publish with `.NET 8`: `dotnet publish pc/AirTrackBridge.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/pc`.
+- `ios/AirTrackPro/` — Swift/SwiftUI iOS app configured with [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`).
+- `.github/workflows/build.yml` — Automated macOS (`xcode-27`) `.ipa` build, Windows `win-x64` `.exe` build, and tagged GitHub Release publishing (`v*`).
+
+## Troubleshooting Tips
+- **Head tracking feels too smoothed:** Click **Raw / Zero-Lag** in the Web UI (`http://127.0.0.1:7878`) and set OpenTrack's own Filter to **None**.
+- **Badge says `WebSocket Fallback` instead of `UDP + WS`:** Allow **UDP port `7879`** inbound for `AirTrackBridge.exe` in Windows Defender Firewall on Private networks.
+- **No motion data on iPhone:** Ensure your AirPods are worn in-ear, spatial/head-tracking is not blocked in iOS Accessibility settings, and Motion & Fitness permission is enabled for AirTrack Pro in iOS Settings.

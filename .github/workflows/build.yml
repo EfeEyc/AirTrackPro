@@ -3,6 +3,7 @@ name: Build AirTrack Pro (iOS IPA + PC Bridge)
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 jobs:
@@ -104,3 +105,47 @@ jobs:
         with:
           name: AirTrackBridge-Windows-x64
           path: dist/pc/
+
+  release:
+    name: Publish GitHub Release
+    needs: [ build-ios-ipa, build-pc-bridge ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download iOS IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AirTrackPro-iOS-IPA
+          path: release_staging/ios
+
+      - name: Download Windows PC Bridge artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AirTrackBridge-Windows-x64
+          path: release_staging/pc
+
+      - name: Package release assets
+        run: |
+          mkdir -p release_assets
+          cp release_staging/ios/AirTrackPro-unsigned.ipa release_assets/AirTrackPro-unsigned.ipa
+          (cd release_staging/pc && zip -qry ../../release_assets/AirTrackBridge-win-x64.zip .)
+          ls -lh release_assets/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release_assets/AirTrackPro-unsigned.ipa release_assets/AirTrackBridge-win-x64.zip --clobber
+          else
+            gh release create "$TAG" \
+              release_assets/AirTrackPro-unsigned.ipa \
+              release_assets/AirTrackBridge-win-x64.zip \
+              --title "AirTrack Pro $TAG" \
+              --notes "Native iOS & iPhone Duo SideStore IPA + Windows x64 OpenTrack / WASAPI Audio Bridge ($TAG)." \
+              --latest
+          fi
