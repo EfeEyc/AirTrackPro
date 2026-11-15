@@ -269,12 +269,24 @@ final class AudioPlayerService: ObservableObject {
             return
         }
 
+        let outFmt = engine.outputNode.outputFormat(forBus: 0)
+        guard outFmt.channelCount > 0, outFmt.sampleRate > 0 else {
+            DispatchQueue.main.async {
+                self.audioStatus = "Audio output unavailable"
+            }
+            return
+        }
+
         guard let format = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: 2) else { return }
         let rb = self.ringBuffer
 
         let node = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList -> OSStatus in
             let abl = UnsafeMutableAudioBufferListPointer(audioBufferList)
-            let n = Int(frameCount)
+            guard !abl.isEmpty else { return noErr }
+            let cap0 = Int(abl[0].mDataByteSize) / MemoryLayout<Float>.size
+            let capFrames = abl.count >= 2 ? min(cap0, Int(abl[1].mDataByteSize) / MemoryLayout<Float>.size) : cap0
+            let n = min(Int(frameCount), capFrames)
+            guard n > 0 else { return noErr }
             if abl.count >= 2,
                let mL = abl[0].mData?.assumingMemoryBound(to: Float.self),
                let mR = abl[1].mData?.assumingMemoryBound(to: Float.self) {
@@ -289,7 +301,6 @@ final class AudioPlayerService: ObservableObject {
         self.sourceNode = node
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        engine.connect(engine.mainMixerNode, to: engine.outputNode, format: nil)
 
         do {
             engine.prepare()

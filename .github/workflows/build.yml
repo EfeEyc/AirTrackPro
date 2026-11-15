@@ -36,7 +36,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_ENTITLEMENTS=""
 
-      - name: Package .xcarchive as unsigned .ipa
+      - name: Verify Info.plist and package .ipa
         run: |
           APP_PATH="$RUNNER_TEMP/AirTrackPro.xcarchive/Products/Applications/AirTrackPro.app"
           if [ ! -d "$APP_PATH" ]; then
@@ -45,7 +45,18 @@ jobs:
           fi
           mkdir -p "$RUNNER_TEMP/ipa_stage/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/ipa_stage/Payload/"
-          rm -rf "$RUNNER_TEMP/ipa_stage/Payload/AirTrackPro.app/_CodeSignature"
+          STAGE_APP="$RUNNER_TEMP/ipa_stage/Payload/AirTrackPro.app"
+
+          echo "=== Compiled Info.plist ==="
+          plutil -p "$STAGE_APP/Info.plist"
+          plutil -extract NSMotionUsageDescription raw "$STAGE_APP/Info.plist"
+          plutil -extract NSCameraUsageDescription raw "$STAGE_APP/Info.plist"
+          plutil -extract NSLocalNetworkUsageDescription raw "$STAGE_APP/Info.plist"
+          plutil -extract UIBackgroundModes.0 raw "$STAGE_APP/Info.plist"
+
+          codesign --force --sign - "$STAGE_APP"
+          codesign -dv "$STAGE_APP"
+
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cd "$RUNNER_TEMP/ipa_stage"
           zip -qry "$GITHUB_WORKSPACE/dist/AirTrackPro-unsigned.ipa" Payload

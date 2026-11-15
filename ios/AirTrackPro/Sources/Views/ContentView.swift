@@ -61,12 +61,6 @@ struct ContentView: View {
         .onAppear {
             hostInput = settings.pcHost
             UIApplication.shared.isIdleTimerDisabled = settings.preventScreenSleep
-            audio.configure(
-                streamEnabled: settings.wantsDesktopAudio,
-                keepAliveEnabled: settings.keepAliveInBackground,
-                bufferMs: settings.audioBufferMs
-            )
-            motion.start()
             if !settings.pcHost.isEmpty && !network.isConnected {
                 network.connect(
                     host: settings.pcHost,
@@ -75,6 +69,23 @@ struct ContentView: View {
                     wantsAudio: settings.wantsDesktopAudio
                 )
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                motion.start()
+                if network.isConnected {
+                    audio.configure(
+                        streamEnabled: settings.wantsDesktopAudio,
+                        keepAliveEnabled: settings.keepAliveInBackground,
+                        bufferMs: settings.audioBufferMs
+                    )
+                }
+            }
+        }
+        .onChange(of: network.isConnected) { connected in
+            audio.configure(
+                streamEnabled: connected && settings.wantsDesktopAudio,
+                keepAliveEnabled: connected && settings.keepAliveInBackground,
+                bufferMs: settings.audioBufferMs
+            )
         }
         .onChange(of: settings.preventScreenSleep) { newVal in
             UIApplication.shared.isIdleTimerDisabled = newVal
@@ -82,22 +93,22 @@ struct ContentView: View {
         .onChange(of: settings.wantsDesktopAudio) { newVal in
             network.setWantsAudio(newVal)
             audio.configure(
-                streamEnabled: newVal,
-                keepAliveEnabled: settings.keepAliveInBackground,
+                streamEnabled: network.isConnected && newVal,
+                keepAliveEnabled: network.isConnected && settings.keepAliveInBackground,
                 bufferMs: settings.audioBufferMs
             )
         }
         .onChange(of: settings.keepAliveInBackground) { newVal in
             audio.configure(
-                streamEnabled: settings.wantsDesktopAudio,
-                keepAliveEnabled: newVal,
+                streamEnabled: network.isConnected && settings.wantsDesktopAudio,
+                keepAliveEnabled: network.isConnected && newVal,
                 bufferMs: settings.audioBufferMs
             )
         }
         .onChange(of: settings.audioBufferMs) { newVal in
             audio.configure(
-                streamEnabled: settings.wantsDesktopAudio,
-                keepAliveEnabled: settings.keepAliveInBackground,
+                streamEnabled: network.isConnected && settings.wantsDesktopAudio,
+                keepAliveEnabled: network.isConnected && settings.keepAliveInBackground,
                 bufferMs: newVal
             )
         }

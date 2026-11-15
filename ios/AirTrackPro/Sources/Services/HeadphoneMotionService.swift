@@ -36,7 +36,6 @@ final class HeadphoneMotionService: NSObject, ObservableObject, CMHeadphoneMotio
     override init() {
         super.init()
         motionManager.delegate = self
-        refreshAvailability()
     }
 
     func refreshAvailability() {
@@ -50,6 +49,15 @@ final class HeadphoneMotionService: NSObject, ObservableObject, CMHeadphoneMotio
     }
 
     func start() {
+        let auth = CMHeadphoneMotionManager.authorizationStatus()
+        if auth == .denied || auth == .restricted {
+            DispatchQueue.main.async {
+                self.isTracking = false
+                self.statusText = "Motion access denied in iOS Settings"
+            }
+            return
+        }
+
         refreshAvailability()
         guard motionManager.isDeviceMotionAvailable else {
             DispatchQueue.main.async {
