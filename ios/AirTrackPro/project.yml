@@ -3,7 +3,6 @@ options:
   bundleIdPrefix: com.airtrackpro
   deploymentTarget:
     iOS: "15.0"
-  xcodeVersion: "16.0"
 
 settings:
   base:

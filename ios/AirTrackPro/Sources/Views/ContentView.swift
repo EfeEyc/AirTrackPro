@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject var network: NetworkStreamService
     @EnvironmentObject var audio: AudioPlayerService
     @EnvironmentObject var scanner: LanScanner
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showQrScanner = false
     @State private var hostInput: String = ""
@@ -16,19 +17,44 @@ struct ContentView: View {
     private let borderColor = Color(red: 0.15, green: 0.21, blue: 0.32)
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
-                    statusHeader
-                    attitudeCard
-                    recenterButton
-                    connectionCard
-                    audioAndBackgroundCard
+        AdaptiveNavigationContainer {
+            GeometryReader { geo in
+                let isWide = horizontalSizeClass == .regular || geo.size.width >= 580
+
+                ScrollView {
+                    if isWide {
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(spacing: 16) {
+                                statusHeader
+                                attitudeCard(previewHeight: 164)
+                                recenterButton
+                            }
+                            .frame(maxWidth: .infinity)
+
+                            VStack(spacing: 16) {
+                                connectionCard
+                                audioAndBackgroundCard
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: 1100)
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        VStack(spacing: 16) {
+                            statusHeader
+                            attitudeCard(previewHeight: 118)
+                            recenterButton
+                            connectionCard
+                            audioAndBackgroundCard
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .background(bgColor.ignoresSafeArea())
             }
-            .background(bgColor.ignoresSafeArea())
             .navigationTitle("AirTrack Pro")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -40,7 +66,6 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showQrScanner) {
             QRScannerSheet { raw in
@@ -131,7 +156,7 @@ struct ContentView: View {
         }
     }
 
-    private var attitudeCard: some View {
+    private func attitudeCard(previewHeight: CGFloat) -> some View {
         VStack(spacing: 14) {
             HStack {
                 Text("HEAD ORIENTATION")
@@ -148,7 +173,7 @@ struct ContentView: View {
                 pitch: motion.previewPitch,
                 roll: motion.previewRoll
             )
-            .frame(height: 118)
+            .frame(height: previewHeight)
 
             HStack(spacing: 10) {
                 AxisMetricBox(label: "YAW", value: motion.previewYaw, accent: .cyan)
@@ -341,7 +366,7 @@ struct ContentView: View {
                             .foregroundColor(.cyan)
                     }
                     Slider(value: $settings.audioBufferMs, in: 15...100, step: 5)
-                        .accentColor(.cyan)
+                        .tint(.cyan)
                 }
             }
 
@@ -479,6 +504,23 @@ private struct HeadHorizonPreview: View {
             }
             .clipped()
             .cornerRadius(12)
+        }
+    }
+}
+
+private struct AdaptiveNavigationContainer<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            NavigationStack {
+                content()
+            }
+        } else {
+            NavigationView {
+                content()
+            }
+            .navigationViewStyle(.stack)
         }
     }
 }

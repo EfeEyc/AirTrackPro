@@ -8,11 +8,22 @@ on:
 jobs:
   build-ios-ipa:
     name: Build Unsigned iOS IPA (SideStore)
-    runs-on: macos-15
+    runs-on: xcode-27
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Select latest Xcode 27 SDK
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          LATEST_XCODE=$(ls -d /Applications/Xcode_27*.app /Applications/Xcode.app 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$LATEST_XCODE" ] && [ -d "$LATEST_XCODE" ]; then
+            echo "Selecting Xcode: $LATEST_XCODE"
+            sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -49,10 +60,12 @@ jobs:
 
           echo "=== Compiled Info.plist ==="
           plutil -p "$STAGE_APP/Info.plist"
+          plutil -extract DTSDKName raw "$STAGE_APP/Info.plist"
           plutil -extract NSMotionUsageDescription raw "$STAGE_APP/Info.plist"
           plutil -extract NSCameraUsageDescription raw "$STAGE_APP/Info.plist"
           plutil -extract NSLocalNetworkUsageDescription raw "$STAGE_APP/Info.plist"
           plutil -extract UIBackgroundModes.0 raw "$STAGE_APP/Info.plist"
+          plutil -extract UISupportedInterfaceOrientations.3 raw "$STAGE_APP/Info.plist"
 
           codesign --force --sign - "$STAGE_APP"
           codesign -dv "$STAGE_APP"

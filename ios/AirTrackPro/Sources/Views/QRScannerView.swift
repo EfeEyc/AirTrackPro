@@ -94,6 +94,8 @@ private final class ScannerViewController: UIViewController, AVCaptureMetadataOu
 
     private var session: AVCaptureSession?
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var rotationCoordinatorObject: AnyObject?
+    private var rotationObservation: NSKeyValueObservation?
     private var didFinish = false
 
     override func viewDidLoad() {
@@ -105,6 +107,7 @@ private final class ScannerViewController: UIViewController, AVCaptureMetadataOu
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
+        applyLegacyOrientationIfNeeded()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -156,13 +159,56 @@ private final class ScannerViewController: UIViewController, AVCaptureMetadataOu
 
         self.session = capSession
         self.previewLayer = preview
+        configurePreviewRotation(device: device, previewLayer: preview)
 
         DispatchQueue.global(qos: .userInitiated).async {
             capSession.startRunning()
         }
     }
 
+    private func configurePreviewRotation(device: AVCaptureDevice, previewLayer: AVCaptureVideoPreviewLayer) {
+        if #available(iOS 17.0, *) {
+            let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+            self.rotationCoordinatorObject = coordinator
+            applyRotationAngle(coordinator.videoRotationAngleForHorizonLevelPreview)
+            self.rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coord, _ in
+                let angle = coord.videoRotationAngleForHorizonLevelPreview
+                DispatchQueue.main.async {
+                    self?.applyRotationAngle(angle)
+                }
+            }
+        } else {
+            applyLegacyOrientationIfNeeded()
+        }
+    }
+
+    @available(iOS 17.0, *)
+    private func applyRotationAngle(_ angle: CGFloat) {
+        guard let conn = previewLayer?.connection,
+              conn.isVideoRotationAngleSupported(angle) else { return }
+        conn.videoRotationAngle = angle
+    }
+
+    private func applyLegacyOrientationIfNeeded() {
+        if #available(iOS 17.0, *) { return }
+        guard let conn = previewLayer?.connection, conn.isVideoOrientationSupported else { return }
+        let uiOrientation = view.window?.windowScene?.interfaceOrientation ?? .portrait
+        switch uiOrientation {
+        case .landscapeLeft:
+            conn.videoOrientation = .landscapeLeft
+        case .landscapeRight:
+            conn.videoOrientation = .landscapeRight
+        case .portraitUpsideDown:
+            conn.videoOrientation = .portraitUpsideDown
+        default:
+            conn.videoOrientation = .portrait
+        }
+    }
+
     private func stopSession() {
+        rotationObservation?.invalidate()
+        rotationObservation = nil
+        rotationCoordinatorObject = nil
         if let s = session, s.isRunning {
             DispatchQueue.global(qos: .userInitiated).async {
                 s.stopRunning()
