@@ -75,6 +75,7 @@ namespace AirTrackBridge
             _tcpListener.Start();
 
             _udpSocket = new UdpClient(s.UdpPort);
+            try { _udpSocket.Client.ReceiveBufferSize = 262144; } catch { }
             TryDisableUdpConnReset(_udpSocket);
 
             try
@@ -91,6 +92,7 @@ namespace AirTrackBridge
 
             _httpAcceptThread = StartBg(HttpAcceptLoop);
             _udpRecvThread = StartBg(UdpRecvLoop);
+            try { _udpRecvThread.Priority = ThreadPriority.AboveNormal; } catch { }
             _discoveryThread = StartBg(DiscoveryLoop);
             _telemetryThread = StartBg(TelemetryAndAudioManagerLoop);
         }
@@ -612,7 +614,7 @@ namespace AirTrackBridge
             long prevTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             while (_running)
             {
-                Thread.Sleep(33); // ~30 Hz Web UI update
+                Thread.Sleep(16); // ~60 Hz Web UI update
 
                 BridgeSettings s = _settingsStore.GetSnapshot();
                 _audioCapture.SetGain(s.AudioGain);

@@ -27,6 +27,8 @@ final class NetworkStreamService: ObservableObject {
     private var wsReady: Bool = false
     private var lastSampleSentTime: Date = .distantPast
     private var isTrackingActive: Bool = false
+    private var localPacketsSent: Int = 0
+    private var lastPacketsUiUpdate: Date = .distantPast
 
     func connect(host: String, httpPort: Int, udpPort: Int, wantsAudio: Bool) {
         let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -46,7 +48,12 @@ final class NetworkStreamService: ObservableObject {
 
         DispatchQueue.main.async {
             self.isConnected = false
+            self.packetsSent = 0
             self.connectionStateLabel = "Connecting to \(trimmed)..."
+        }
+        netQueue.async {
+            self.localPacketsSent = 0
+            self.lastPacketsUiUpdate = .distantPast
         }
 
         startUdp(host: trimmed, port: UInt16(clamping: udpPort))
@@ -125,18 +132,23 @@ final class NetworkStreamService: ObservableObject {
     }
 
     private func sendBinaryPacket(_ data: Data) {
+        var didSend = false
         if udpReady, let conn = udpConnection {
-            conn.send(content: data, completion: .contentProcessed { _ in })
-            DispatchQueue.main.async {
-                self.packetsSent += 1
-            }
-            return
+            conn.send(content: data, completion: .idempotent)
+            didSend = true
+        } else if wsReady, let ws = wsTask {
+            ws.send(.data(data)) { _ in }
+            didSend = true
         }
 
-        if wsReady, let ws = wsTask {
-            ws.send(.data(data)) { _ in }
+        guard didSend else { return }
+        localPacketsSent += 1
+        let now = Date()
+        if localPacketsSent <= 5 || now.timeIntervalSince(lastPacketsUiUpdate) >= 0.08 {
+            lastPacketsUiUpdate = now
+            let countSnapshot = localPacketsSent
             DispatchQueue.main.async {
-                self.packetsSent += 1
+                self.packetsSent = countSnapshot
             }
         }
     }
@@ -144,6 +156,7 @@ final class NetworkStreamService: ObservableObject {
     private func startUdp(host: String, port: UInt16) {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else { return }
         let params = NWParameters.udp
+        params.serviceClass = .interactiveVoice
         let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: params)
         self.udpConnection = conn
 

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace AirTrackBridge
@@ -103,9 +104,14 @@ namespace AirTrackBridge
                 return x;
             }
 
+            // Unwrap +-360 degree boundary jumps so yaw never spikes across +-180
+            double diff = x - _xPrev;
+            if (diff > 180.0) _xPrev += 360.0;
+            else if (diff < -180.0) _xPrev -= 360.0;
+
             double rate = 1.0 / dt;
             double dx = (x - _xPrev) * rate;
-            double alphaD = Alpha(rate, 1.0);
+            double alphaD = Alpha(rate, 6.0);
             double edx = alphaD * dx + (1.0 - alphaD) * _dxPrev;
             double cutoff = minCutoff + beta * Math.Abs(edx);
             double alpha = Alpha(rate, cutoff);
@@ -187,6 +193,12 @@ namespace AirTrackBridge
         private double _outX, _outY, _outZ, _outYaw, _outPitch, _outRoll;
         private string _cachedOtHost = "";
         private int _cachedOtPort;
+
+        [DllImport("winmm.dll")]
+        private static extern uint timeBeginPeriod(uint uPeriod);
+
+        [DllImport("winmm.dll")]
+        private static extern uint timeEndPeriod(uint uPeriod);
 
         public HeadTrackingEngine(SettingsStore settingsStore)
         {
@@ -353,61 +365,79 @@ namespace AirTrackBridge
 
         private void OutputLoop()
         {
-            long freq = Stopwatch.Frequency;
-            long prevTick = Stopwatch.GetTimestamp();
+            bool timerBoosted = false;
+            try { timerBoosted = (timeBeginPeriod(1) == 0); } catch { }
 
-            while (_running)
+            try
             {
-                BridgeSettings s = _settingsStore.GetSnapshot();
-                double targetPeriodSec = 1.0 / Math.Max(30, s.OutputRateHz);
-                long targetTicks = (long)(targetPeriodSec * freq);
+                long freq = Stopwatch.Frequency;
+                long prevTick = Stopwatch.GetTimestamp();
 
-                long nowTick = Stopwatch.GetTimestamp();
-                double dt = (nowTick - prevTick) / (double)freq;
-                if (dt <= 0.0 || dt > 0.25) dt = targetPeriodSec;
-                prevTick = nowTick;
-
-                double instOutHz = Math.Min(s.OutputRateHz * 1.25, 1.0 / dt);
-                bool sendPacket = false;
-                double outX = 0, outY = 0, outZ = 0, outYaw = 0, outPitch = 0, outRoll = 0;
-
-                lock (_stateLock)
+                while (_running)
                 {
-                    _outputHz = _outputHz <= 0.1 ? instOutHz : (_outputHz * 0.9 + instOutHz * 0.1);
+                    BridgeSettings s = _settingsStore.GetSnapshot();
+                    double targetPeriodSec = 1.0 / Math.Max(30, s.OutputRateHz);
+                    long targetTicks = (long)(targetPeriodSec * freq);
 
-                    bool pulseActive = nowTick < _testPulseUntilTicks;
-                    double ageSec = _lastPacketTicks > 0 ? (nowTick - _lastPacketTicks) / (double)freq : 999.0;
-                    bool trackingAlive = _hasReference && _airPodsActive && ageSec < 1.2;
+                    long nowTick = Stopwatch.GetTimestamp();
+                    double dt = (nowTick - prevTick) / (double)freq;
+                    if (dt <= 0.0 || dt > 0.25) dt = targetPeriodSec;
+                    prevTick = nowTick;
 
-                    if (pulseActive)
+                    double instOutHz = Math.Min(s.OutputRateHz * 1.25, 1.0 / dt);
+                    bool sendPacket = false;
+                    double outX = 0, outY = 0, outZ = 0, outYaw = 0, outPitch = 0, outRoll = 0;
+
+                    lock (_stateLock)
                     {
-                        double phase = ((_testPulseUntilTicks - nowTick) / (double)freq) * Math.PI * 2.0;
-                        outYaw = Math.Sin(phase) * 25.0;
-                        outPitch = Math.Cos(phase) * 12.0;
-                        outRoll = Math.Sin(phase * 0.5) * 8.0;
-                        _rawYaw = outYaw;
-                        _rawPitch = outPitch;
-                        _rawRoll = outRoll;
-                        _outX = 0; _outY = 0; _outZ = 0;
-                        _outYaw = outYaw; _outPitch = outPitch; _outRoll = outRoll;
-                        sendPacket = true;
-                    }
-                    else if (trackingAlive)
-                    {
-                        Quat targetQ = _qLatest;
-                        if (s.GyroLeadMs > 0.1 && ageSec < 0.08)
+                        _outputHz = _outputHz <= 0.1 ? instOutHz : (_outputHz * 0.9 + instOutHz * 0.1);
+
+                        bool pulseActive = nowTick < _testPulseUntilTicks;
+                        double ageSec = _lastPacketTicks > 0 ? (nowTick - _lastPacketTicks) / (double)freq : 999.0;
+                        bool trackingAlive = _hasReference && _airPodsActive && ageSec < 1.2;
+
+                        if (pulseActive)
                         {
-                            double lead = Math.Min(ageSec, s.GyroLeadMs / 1000.0) * Math.Exp(-ageSec / 0.035);
-                            targetQ = IntegrateGyro(targetQ, _rx, _ry, _rz, lead);
+                            double phase = ((_testPulseUntilTicks - nowTick) / (double)freq) * Math.PI * 2.0;
+                            outYaw = Math.Sin(phase) * 25.0;
+                            outPitch = Math.Cos(phase) * 12.0;
+                            outRoll = Math.Sin(phase * 0.5) * 8.0;
+                            _rawYaw = outYaw;
+                            _rawPitch = outPitch;
+                            _rawRoll = outRoll;
+                            _outX = 0; _outY = 0; _outZ = 0;
+                            _outYaw = outYaw; _outPitch = outPitch; _outRoll = outRoll;
+                            sendPacket = true;
                         }
+                        else if (trackingAlive)
+                        {
+                            Quat targetQ = _qLatest;
+                            if (ageSec < 0.045)
+                            {
+                                double predSec = Math.Min(0.032, ageSec * 0.75 + s.GyroLeadMs / 1000.0);
+                                targetQ = IntegrateGyro(targetQ, _rx, _ry, _rz, predSec);
+                            }
+                            else if (ageSec < 0.12)
+                            {
+                                double fade = 1.0 - (ageSec - 0.045) / 0.075;
+                                double predSec = Math.Min(0.032, 0.045 * 0.75 + s.GyroLeadMs / 1000.0) * Math.Max(0.0, fade);
+                                targetQ = IntegrateGyro(targetQ, _rx, _ry, _rz, predSec);
+                            }
 
-                        Quat qRel = s.QuaternionTransposeMode
-                            ? Quat.Multiply(targetQ, _qRef.Conjugate())
-                            : Quat.Multiply(_qRef.Conjugate(), targetQ);
+                            Quat qRel = s.QuaternionTransposeMode
+                                ? Quat.Multiply(targetQ, _qRef.Conjugate())
+                                : Quat.Multiply(_qRef.Conjugate(), targetQ);
 
-                        double tau = Math.Max(0.001, s.InterpSmoothingMs / 1000.0);
-                        double alpha = 1.0 - Math.Exp(-dt / tau);
-                        _qSmoothed = Quat.Slerp(_qSmoothed, qRel, alpha);
+                            if (s.InterpSmoothingMs <= 0.1)
+                            {
+                                _qSmoothed = qRel;
+                            }
+                            else
+                            {
+                                double tau = s.InterpSmoothingMs / 1000.0;
+                                double alpha = 1.0 - Math.Exp(-dt / tau);
+                                _qSmoothed = Quat.Slerp(_qSmoothed, qRel, alpha);
+                            }
 
                         double rawYaw, rawPitch, rawRoll;
                         ExtractHeadEulerDegrees(_qSmoothed, out rawYaw, out rawPitch, out rawRoll);
@@ -483,19 +513,27 @@ namespace AirTrackBridge
                     SendToOpenTrack(s.OpenTrackHost, s.OpenTrackPort, outX, outY, outZ, outYaw, outPitch, outRoll);
                 }
 
-                long elapsedTicks = Stopwatch.GetTimestamp() - nowTick;
-                long remainTicks = targetTicks - elapsedTicks;
-                if (remainTicks > 0)
+                    long elapsedTicks = Stopwatch.GetTimestamp() - nowTick;
+                    long remainTicks = targetTicks - elapsedTicks;
+                    if (remainTicks > 0)
+                    {
+                        int sleepMs = (int)(remainTicks * 1000 / freq);
+                        if (sleepMs > 1)
+                        {
+                            Thread.Sleep(sleepMs - 1);
+                        }
+                        while (Stopwatch.GetTimestamp() - nowTick < targetTicks)
+                        {
+                            Thread.SpinWait(20);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                if (timerBoosted)
                 {
-                    int sleepMs = (int)(remainTicks * 1000 / freq);
-                    if (sleepMs > 1)
-                    {
-                        Thread.Sleep(sleepMs - 1);
-                    }
-                    while (Stopwatch.GetTimestamp() - nowTick < targetTicks)
-                    {
-                        Thread.SpinWait(20);
-                    }
+                    try { timeEndPeriod(1); } catch { }
                 }
             }
         }

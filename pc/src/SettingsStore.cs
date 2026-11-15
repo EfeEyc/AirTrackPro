@@ -7,6 +7,11 @@ namespace AirTrackBridge
     [Serializable]
     public class BridgeSettings
     {
+        public const int CurrentSettingsVersion = 2;
+
+        // Default 0 so XML files serialized before SettingsVersion existed deserialize as 0 and trigger migration.
+        public int SettingsVersion = 0;
+
         public int HttpPort = 7878;
         public int UdpPort = 7879;
         public int DiscoveryPort = 7880;
@@ -15,12 +20,12 @@ namespace AirTrackBridge
         public int OpenTrackPort = 4242;
 
         public int OutputRateHz = 120;
-        public double GyroLeadMs = 6.0;
-        public double InterpSmoothingMs = 12.0;
+        public double GyroLeadMs = 4.0;
+        public double InterpSmoothingMs = 0.0;
 
         public bool EnableOneEuroFilter = true;
-        public double OneEuroMinCutoff = 1.6;
-        public double OneEuroBeta = 0.055;
+        public double OneEuroMinCutoff = 5.0;
+        public double OneEuroBeta = 0.22;
 
         public double DeadzoneDegrees = 0.12;
         public double ResponseExponent = 1.15;
@@ -79,6 +84,7 @@ namespace AirTrackBridge
             lock (_lock)
             {
                 var copy = new BridgeSettings();
+                copy.SettingsVersion = _current.SettingsVersion;
                 copy.HttpPort = _current.HttpPort;
                 copy.UdpPort = _current.UdpPort;
                 copy.DiscoveryPort = _current.DiscoveryPort;
@@ -134,9 +140,9 @@ namespace AirTrackBridge
             if (s.OutputRateHz < 30) s.OutputRateHz = 30;
             if (s.OutputRateHz > 240) s.OutputRateHz = 240;
             s.GyroLeadMs = Clamp(s.GyroLeadMs, 0.0, 30.0);
-            s.InterpSmoothingMs = Clamp(s.InterpSmoothingMs, 1.0, 50.0);
-            s.OneEuroMinCutoff = Clamp(s.OneEuroMinCutoff, 0.1, 10.0);
-            s.OneEuroBeta = Clamp(s.OneEuroBeta, 0.0, 0.5);
+            s.InterpSmoothingMs = Clamp(s.InterpSmoothingMs, 0.0, 50.0);
+            s.OneEuroMinCutoff = Clamp(s.OneEuroMinCutoff, 0.2, 25.0);
+            s.OneEuroBeta = Clamp(s.OneEuroBeta, 0.0, 1.5);
             s.DeadzoneDegrees = Clamp(s.DeadzoneDegrees, 0.0, 5.0);
             s.ResponseExponent = Clamp(s.ResponseExponent, 0.5, 3.0);
             s.YawSensitivity = Clamp(s.YawSensitivity, 0.1, 10.0);
@@ -161,14 +167,26 @@ namespace AirTrackBridge
                 if (File.Exists(_filePath))
                 {
                     var ser = new XmlSerializer(typeof(BridgeSettings));
+                    BridgeSettings loaded = null;
                     using (var fs = File.OpenRead(_filePath))
                     {
-                        var loaded = ser.Deserialize(fs) as BridgeSettings;
-                        if (loaded != null)
+                        loaded = ser.Deserialize(fs) as BridgeSettings;
+                    }
+                    if (loaded != null)
+                    {
+                        bool upgraded = false;
+                        if (loaded.SettingsVersion < BridgeSettings.CurrentSettingsVersion)
                         {
-                            Sanitize(loaded);
-                            return loaded;
+                            if (Math.Abs(loaded.InterpSmoothingMs - 12.0) < 0.01) loaded.InterpSmoothingMs = 0.0;
+                            if (Math.Abs(loaded.OneEuroMinCutoff - 1.6) < 0.01) loaded.OneEuroMinCutoff = 5.0;
+                            if (Math.Abs(loaded.OneEuroBeta - 0.055) < 0.001) loaded.OneEuroBeta = 0.22;
+                            if (Math.Abs(loaded.GyroLeadMs - 6.0) < 0.01) loaded.GyroLeadMs = 4.0;
+                            loaded.SettingsVersion = BridgeSettings.CurrentSettingsVersion;
+                            upgraded = true;
                         }
+                        Sanitize(loaded);
+                        if (upgraded) SaveInternal(loaded);
+                        return loaded;
                     }
                 }
             }
@@ -177,6 +195,7 @@ namespace AirTrackBridge
                 // Fall back to defaults if XML is malformed
             }
             var def = new BridgeSettings();
+            def.SettingsVersion = BridgeSettings.CurrentSettingsVersion;
             SaveInternal(def);
             return def;
         }

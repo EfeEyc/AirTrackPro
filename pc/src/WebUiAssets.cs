@@ -204,6 +204,11 @@ namespace AirTrackBridge
 
     <div class=""card col-6"">
       <h2><span>OpenTrack Target &amp; Precision Filtering</span></h2>
+      <div class=""pills"" style=""margin-bottom:10px"">
+        <button type=""button"" id=""presetRaw"">Raw / Zero-Lag</button>
+        <button type=""button"" id=""presetBalanced"">Fast 1-Euro (Default)</button>
+        <button type=""button"" id=""presetSmooth"">Extra Smooth</button>
+      </div>
       <div class=""three-col"" style=""margin-bottom:10px"">
         <div class=""row""><label>OpenTrack IP</label><input type=""text"" id=""OpenTrackHost""></div>
         <div class=""row""><label>Port</label><input type=""number"" id=""OpenTrackPort"" min=""1"" max=""65535""></div>
@@ -213,12 +218,12 @@ namespace AirTrackBridge
       </div>
       <div class=""two-col"">
         <div class=""row"">
-          <label>Interp Smoothing <span class=""val"" id=""vInterpSmoothingMs"">12 ms</span></label>
-          <input type=""range"" id=""InterpSmoothingMs"" min=""2"" max=""35"" step=""1"">
+          <label>Interp Smoothing <span class=""val"" id=""vInterpSmoothingMs"">0 ms</span></label>
+          <input type=""range"" id=""InterpSmoothingMs"" min=""0"" max=""35"" step=""1"">
         </div>
         <div class=""row"">
-          <label>Gyro Lead Prediction <span class=""val"" id=""vGyroLeadMs"">6 ms</span></label>
-          <input type=""range"" id=""GyroLeadMs"" min=""0"" max=""20"" step=""1"">
+          <label>Gyro Lead Prediction <span class=""val"" id=""vGyroLeadMs"">4 ms</span></label>
+          <input type=""range"" id=""GyroLeadMs"" min=""0"" max=""25"" step=""1"">
         </div>
       </div>
       <div class=""row-inline"">
@@ -228,12 +233,12 @@ namespace AirTrackBridge
       </div>
       <div class=""two-col"">
         <div class=""row"">
-          <label>One-Euro Min Cutoff <span class=""val"" id=""vOneEuroMinCutoff"">1.6 Hz</span></label>
-          <input type=""range"" id=""OneEuroMinCutoff"" min=""0.2"" max=""6.0"" step=""0.1"">
+          <label>One-Euro Min Cutoff <span class=""val"" id=""vOneEuroMinCutoff"">5.0 Hz</span></label>
+          <input type=""range"" id=""OneEuroMinCutoff"" min=""0.2"" max=""20.0"" step=""0.2"">
         </div>
         <div class=""row"">
-          <label>One-Euro Speed Beta <span class=""val"" id=""vOneEuroBeta"">0.055</span></label>
-          <input type=""range"" id=""OneEuroBeta"" min=""0"" max=""0.25"" step=""0.005"">
+          <label>One-Euro Speed Beta <span class=""val"" id=""vOneEuroBeta"">0.220</span></label>
+          <input type=""range"" id=""OneEuroBeta"" min=""0"" max=""1.0"" step=""0.01"">
         </div>
       </div>
     </div>
@@ -290,18 +295,20 @@ namespace AirTrackBridge
 
   function el(id) { return document.getElementById(id); }
 
+  function valOr(v, def) { return (v !== undefined && v !== null) ? v : def; }
+
   function updateLabels() {
-    el('vAudioGain').textContent = Math.round((settings.AudioGain || 1) * 100) + '%';
-    el('vInterpSmoothingMs').textContent = (settings.InterpSmoothingMs || 12) + ' ms';
-    el('vGyroLeadMs').textContent = (settings.GyroLeadMs || 6) + ' ms';
-    el('vOneEuroMinCutoff').textContent = Number(settings.OneEuroMinCutoff || 1.6).toFixed(1) + ' Hz';
-    el('vOneEuroBeta').textContent = Number(settings.OneEuroBeta || 0.055).toFixed(3);
-    el('vYawSensitivity').textContent = Number(settings.YawSensitivity || 2.2).toFixed(1) + 'x';
-    el('vPitchSensitivity').textContent = Number(settings.PitchSensitivity || 2.0).toFixed(1) + 'x';
-    el('vRollSensitivity').textContent = Number(settings.RollSensitivity || 1.2).toFixed(1) + 'x';
-    el('vDeadzoneDegrees').textContent = Number(settings.DeadzoneDegrees || 0.12).toFixed(2) + '\u00B0';
-    el('vResponseExponent').textContent = Number(settings.ResponseExponent || 1.15).toFixed(2);
-    el('vNeckModelIntensity').textContent = Number(settings.NeckModelIntensity || 0.65).toFixed(2) + 'x';
+    el('vAudioGain').textContent = Math.round(valOr(settings.AudioGain, 1) * 100) + '%';
+    el('vInterpSmoothingMs').textContent = valOr(settings.InterpSmoothingMs, 0) + ' ms';
+    el('vGyroLeadMs').textContent = valOr(settings.GyroLeadMs, 4) + ' ms';
+    el('vOneEuroMinCutoff').textContent = Number(valOr(settings.OneEuroMinCutoff, 5.0)).toFixed(1) + ' Hz';
+    el('vOneEuroBeta').textContent = Number(valOr(settings.OneEuroBeta, 0.22)).toFixed(3);
+    el('vYawSensitivity').textContent = Number(valOr(settings.YawSensitivity, 2.2)).toFixed(1) + 'x';
+    el('vPitchSensitivity').textContent = Number(valOr(settings.PitchSensitivity, 2.0)).toFixed(1) + 'x';
+    el('vRollSensitivity').textContent = Number(valOr(settings.RollSensitivity, 1.2)).toFixed(1) + 'x';
+    el('vDeadzoneDegrees').textContent = Number(valOr(settings.DeadzoneDegrees, 0.12)).toFixed(2) + '\u00B0';
+    el('vResponseExponent').textContent = Number(valOr(settings.ResponseExponent, 1.15)).toFixed(2);
+    el('vNeckModelIntensity').textContent = Number(valOr(settings.NeckModelIntensity, 0.65)).toFixed(2) + 'x';
     el('otPortLbl').textContent = settings.OpenTrackPort || 4242;
   }
 
@@ -370,6 +377,20 @@ namespace AirTrackBridge
   el('btnPulse').addEventListener('click', function() {
     fetch('/api/test-pulse', { method: 'POST' });
   });
+
+  function applyFilterPreset(interpMs, leadMs, useEuro, minCutoff, beta) {
+    settings.InterpSmoothingMs = interpMs;
+    settings.GyroLeadMs = leadMs;
+    settings.EnableOneEuroFilter = useEuro;
+    settings.OneEuroMinCutoff = minCutoff;
+    settings.OneEuroBeta = beta;
+    applySettingsToUi(settings);
+    pushSettings();
+  }
+
+  el('presetRaw').addEventListener('click', function() { applyFilterPreset(0, 4, false, 8.0, 0.35); });
+  el('presetBalanced').addEventListener('click', function() { applyFilterPreset(0, 4, true, 5.0, 0.22); });
+  el('presetSmooth').addEventListener('click', function() { applyFilterPreset(6, 4, true, 2.4, 0.10); });
 
   function refreshPairingQr(ip) {
     if (!ip) return;
