@@ -137,14 +137,16 @@ jobs:
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release_assets/AirTrackPro-unsigned.ipa release_assets/AirTrackBridge-win-x64.zip --clobber
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" release_assets/AirTrackPro-unsigned.ipa release_assets/AirTrackBridge-win-x64.zip --repo "$GH_REPO" --clobber
           else
             gh release create "$TAG" \
               release_assets/AirTrackPro-unsigned.ipa \
               release_assets/AirTrackBridge-win-x64.zip \
+              --repo "$GH_REPO" \
               --title "AirTrack Pro $TAG" \
               --notes "Native iOS & iPhone Duo SideStore IPA + Windows x64 OpenTrack / WASAPI Audio Bridge ($TAG)." \
               --latest
